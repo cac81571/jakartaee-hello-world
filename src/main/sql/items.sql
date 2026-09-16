@@ -1,0 +1,7 @@
+-- 自動作成を使わない場合の参考 DDL
+-- ID はアプリケーションから直接指定します。
+CREATE TABLE ITEMS (
+    ID NUMBER(19) PRIMARY KEY,
+    NAME VARCHAR2(100) NOT NULL,
+    DESCRIPTION VARCHAR2(500)
+);

@@ -1,0 +1,23 @@
+<server description="defaultServer">
+    <featureManager>
+        <feature>webProfile-10.0</feature>
+    </featureManager>
+    <basicRegistry id="defaultBasicRegistry" realm="BasicRealm">
+        <user name="username" password="password" />
+    </basicRegistry>
+    <keyStore id="defaultKeyStore" password="password" />
+    <httpEndpoint id="defaultHttpEndpoint" host="*" httpPort="9080" httpsPort="9443" />
+    <webApplication location="jakartaee-hello-world.war" contextRoot="/"/>
+
+    <variable name="oracle.url" defaultValue="jdbc:oracle:thin:@//localhost:1521/FREEPDB1"/>
+    <variable name="oracle.user" defaultValue="app"/>
+    <variable name="oracle.password" defaultValue="app"/>
+
+    <library id="jdbcLib">
+        <fileset dir="${server.config.dir}/jdbc" includes="*.jar"/>
+    </library>
+    <dataSource id="OracleDataSource" jndiName="jdbc/oracle">
+        <jdbcDriver libraryRef="jdbcLib"/>
+        <properties.oracle URL="${oracle.url}" user="${oracle.user}" password="${oracle.password}"/>
+    </dataSource>
+</server>

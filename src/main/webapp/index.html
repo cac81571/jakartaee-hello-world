@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="Cache-Control" content="no-store">
+    <title>アイテム CRUD</title>
+    <style>
+        :root { color-scheme: light dark; }
+        body { font-family: sans-serif; max-width: 840px; margin: 2rem auto; padding: 0 1rem; }
+        h1 { font-size: 1.4rem; }
+        form, table { width: 100%; }
+        label { display: block; margin: 0.6rem 0 0.2rem; }
+        input[type=text], input[type=number] { width: 100%; box-sizing: border-box; padding: 0.4rem; }
+        .actions { margin: 0.8rem 0 1.4rem; display: flex; gap: 0.5rem; }
+        button { padding: 0.4rem 0.8rem; cursor: pointer; }
+        table { border-collapse: collapse; }
+        th, td { border-bottom: 1px solid #8884; text-align: left; padding: 0.45rem; }
+        .error { color: #c62828; min-height: 1.2rem; }
+        .muted { opacity: 0.75; font-size: 0.9rem; }
+    </style>
+</head>
+<body>
+    <h1>アイテム管理</h1>
+    <p class="muted">Oracle 上の ITEMS テーブルを Jakarta REST で CRUD します。</p>
+    <p id="message" class="error"></p>
+
+    <form id="item-form">
+        <label for="item-id">ID</label>
+        <input id="item-id" type="number" min="1" step="1" required>
+        <label for="item-name">名前</label>
+        <input id="item-name" type="text" maxlength="100" required>
+        <label for="item-description">説明</label>
+        <input id="item-description" type="text" maxlength="500">
+        <div class="actions">
+            <button type="submit" id="save-button">追加</button>
+            <button type="button" id="reset-button">クリア</button>
+        </div>
+    </form>
+
+    <table>
+        <thead>
+            <tr><th>ID</th><th>名前</th><th>説明</th><th></th></tr>
+        </thead>
+        <tbody id="item-rows"></tbody>
+    </table>
+
+    <p class="muted"><a href="rest/hello">Hello API</a></p>
+
+    <script>
+        const api = "rest/items";
+        const form = document.getElementById("item-form");
+        const idInput = document.getElementById("item-id");
+        const nameInput = document.getElementById("item-name");
+        const descriptionInput = document.getElementById("item-description");
+        const saveButton = document.getElementById("save-button");
+        const message = document.getElementById("message");
+        const rows = document.getElementById("item-rows");
+        let editing = false;
+
+        function showError(text) {
+            message.textContent = text || "";
+        }
+
+        function payload() {
+            return {
+                id: Number(idInput.value),
+                name: nameInput.value.trim(),
+                description: descriptionInput.value.trim()
+            };
+        }
+
+        function resetForm() {
+            editing = false;
+            idInput.value = "";
+            idInput.readOnly = false;
+            nameInput.value = "";
+            descriptionInput.value = "";
+            saveButton.textContent = "追加";
+        }
+
+        function editItem(item) {
+            editing = true;
+            idInput.value = item.id;
+            idInput.readOnly = true;
+            nameInput.value = item.name;
+            descriptionInput.value = item.description || "";
+            saveButton.textContent = "更新";
+            nameInput.focus();
+        }
+
+        async function loadItems() {
+            showError("");
+            const response = await fetch(api);
+            if (!response.ok) {
+                showError("一覧の取得に失敗しました。Oracle 接続設定を確認してください。");
+                rows.innerHTML = "";
+                return;
+            }
+            const items = await response.json();
+            rows.innerHTML = "";
+            for (const item of items) {
+                const tr = document.createElement("tr");
+                tr.innerHTML = `<td>${item.id}</td><td></td><td></td><td></td>`;
+                tr.children[1].textContent = item.name;
+                tr.children[2].textContent = item.description || "";
+                const edit = document.createElement("button");
+                edit.type = "button";
+                edit.textContent = "編集";
+                edit.addEventListener("click", () => editItem(item));
+                const del = document.createElement("button");
+                del.type = "button";
+                del.textContent = "削除";
+                del.addEventListener("click", () => deleteItem(item.id));
+                tr.children[3].append(edit, " ", del);
+                rows.append(tr);
+            }
+        }
+
+        async function deleteItem(id) {
+            const response = await fetch(api + "/" + id, { method: "DELETE" });
+            if (!response.ok) {
+                showError("削除に失敗しました。");
+                return;
+            }
+            resetForm();
+            await loadItems();
+        }
+
+        form.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            const id = Number(idInput.value);
+            const response = await fetch(editing ? api + "/" + id : api, {
+                method: editing ? "PUT" : "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload())
+            });
+            if (!response.ok) {
+                showError(editing ? "更新に失敗しました。" : "追加に失敗しました。");
+                return;
+            }
+            resetForm();
+            await loadItems();
+        });
+
+        document.getElementById("reset-button").addEventListener("click", resetForm);
+        loadItems();
+    </script>
+</body>
+</html>
