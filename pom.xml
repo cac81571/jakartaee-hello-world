@@ -23,6 +23,7 @@
         <war-plugin.version>3.5.1</war-plugin.version>
         <liberty-plugin.version>3.12.0</liberty-plugin.version>
         <ojdbc.version>23.26.2.0.0</ojdbc.version>
+        <mybatis.version>3.5.19</mybatis.version>
         <!-- Java 21 は stdout が MS932 のままなので、UTF-8 のターミナルで文字化けする -->
         <liberty.jvm.stdout>-Dstdout.encoding=UTF-8</liberty.jvm.stdout>
         <liberty.jvm.stderr>-Dstderr.encoding=UTF-8</liberty.jvm.stderr>
@@ -40,6 +41,11 @@
             <artifactId>ojdbc11</artifactId>
             <version>${ojdbc.version}</version>
             <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mybatis</groupId>
+            <artifactId>mybatis</artifactId>
+            <version>${mybatis.version}</version>
         </dependency>
     </dependencies>
 

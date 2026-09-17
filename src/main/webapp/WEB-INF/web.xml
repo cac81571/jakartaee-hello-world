@@ -13,4 +13,8 @@
         <servlet-name>org.eclipse.jakarta.hello.HelloApplication</servlet-name>
         <url-pattern>/rest/*</url-pattern>
     </servlet-mapping>
+    <resource-ref>
+        <res-ref-name>jdbc/oracle</res-ref-name>
+        <res-type>javax.sql.DataSource</res-type>
+    </resource-ref>
 </web-app>

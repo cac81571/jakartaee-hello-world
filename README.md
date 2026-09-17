@@ -23,7 +23,7 @@ oracle.password=app
 
 サービス名は環境に合わせて `XEPDB1` や `ORCLPDB1` などに変更する。
 
-2. テーブルを用意する。アプリ起動時に EclipseLink が無いテーブルを作ることもあるが、手動なら `src/main/sql/items.sql` を実行する。
+2. テーブルを用意する。MyBatis はテーブルを自動作成しないので、`src/main/sql/items.sql` を実行する。
 
 ```sql
 CREATE TABLE ITEMS (
@@ -44,19 +44,19 @@ DROP SEQUENCE ITEMS_SEQ;
 
 ## テーブルを変更するとき（参考）
 
-このアプリは **Entity・ネイティブ SQL・画面** が同じ列を共有している。DB だけ変えても動かない。
+このアプリは **POJO・MyBatis マッパー・画面** が同じ列を共有している。DB だけ変えても動かない。
 
 いま紐づいている場所:
 
 | 場所 | 内容 |
 | --- | --- |
 | `src/main/sql/items.sql` | DDL の正 |
-| `Item.java` | JPA エンティティ（SQL 結果のマッピング） |
-| `ItemService.java` | CRUD の SQL と実行 |
+| `Item.java` | 結果のマッピング（POJO） |
+| `ItemMapper.java` | SELECT / INSERT / UPDATE / DELETE |
 | `src/main/webapp/index.html` | 入力欄と JSON |
 | `ItemResource.java` | 必須チェック（いまは `id` と `name`） |
 
-`persistence.xml` の `eclipselink.ddl-generation=create-or-extend-tables` は、**無いテーブルや足りない列を足す程度**。列の削除、型変更、主キー方針の変更はしない。開発中は SQL で明示するのが確実。
+開発中のテーブル変更は SQL で明示する。MyBatis はスキーマを自動では変えない。
 
 ### 列を足す例（`STATUS`）
 
@@ -68,8 +68,8 @@ ALTER TABLE ITEMS ADD STATUS VARCHAR2(20);
 ```
 
 3. `src/main/sql/items.sql` の `CREATE TABLE` にも同じ列を足す（次から新規作成するとき用）。
-4. `Item.java` にフィールドと getter / setter を足す。`@Column(name = "STATUS")` を付ける。
-5. `ItemService.java` の SELECT / INSERT / UPDATE に列を足す。`?1` から始まるプレースホルダ番号を `setParameter` と揃える。
+4. `Item.java` にフィールドと getter / setter を足す。
+5. `ItemMapper.java` の SELECT / INSERT / UPDATE に列を足す。`#{status}` のようにプロパティ名でバインドする。
 
 6. 画面の入力・一覧・`payload()` に `status` を足す。API の JSON も同じプロパティ名になる。
 7. サーバーを再起動する。`.\mvnw.cmd liberty:run`
@@ -82,14 +82,13 @@ ALTER で落とすか、開発用ならドロップして作り直す。
 DROP TABLE ITEMS;
 ```
 
-そのあと `src/main/sql/items.sql` を実行するか、アプリ起動時の DDL 生成に任せる。Entity と `ItemService` の SQL から消した列を抜かないと、INSERT / UPDATE が失敗する。
+そのあと `src/main/sql/items.sql` を実行する。`Item.java` と `ItemMapper` の SQL から消した列を抜かないと、INSERT / UPDATE が失敗する。
 
 ### テーブル名を変える
 
 `ITEMS` は次に直書きされている。
 
-- `Item.java` の `@Table(name = "...")`
-- `ItemService.java` の SQL
+- `ItemMapper.java` の SQL
 - `src/main/sql/items.sql`
 
 ### 確認
@@ -166,17 +165,19 @@ curl.exe -X POST http://localhost:9080/rest/items -H "Content-Type: application/
 curl.exe -X PUT http://localhost:9080/rest/items/1 -H "Content-Type: application/json" -d "{\"name\":\"更新後\",\"description\":\"説明\"}"
 ```
 
-CRUD の SQL は `ItemService` に直書きし、`EntityManager#createNativeQuery` で実行する。
+CRUD の SQL は `ItemMapper` に書き、`ItemService` が MyBatis の `SqlSession` で実行する。トランザクションは Jakarta `@Transactional`（JTA）に任せる。
 
 ```java
 SELECT ID, NAME, DESCRIPTION FROM ITEMS ORDER BY ID
-SELECT ID, NAME, DESCRIPTION FROM ITEMS WHERE ID = ?1
-INSERT INTO ITEMS (ID, NAME, DESCRIPTION) VALUES (?1, ?2, ?3)
-UPDATE ITEMS SET NAME = ?1, DESCRIPTION = ?2 WHERE ID = ?3
-DELETE FROM ITEMS WHERE ID = ?1
+SELECT ID, NAME, DESCRIPTION FROM ITEMS WHERE ID = #{id}
+INSERT INTO ITEMS (ID, NAME, DESCRIPTION) VALUES (#{id}, #{name}, #{description})
+UPDATE ITEMS SET NAME = #{name}, DESCRIPTION = #{description} WHERE ID = #{id}
+DELETE FROM ITEMS WHERE ID = #{id}
 ```
 
-プレースホルダは JPA の `?1`, `?2` …。テーブルや列を変えたらこの SQL と `Item.java`、`setParameter` の番号を揃える。
+プレースホルダは MyBatis の `#{プロパティ名}`。テーブルや列を変えたらこの SQL と `Item.java` を揃える。
+
+DataSource は `SqlSessionFactoryProducer` が JNDI `jdbc/oracle` を探す。
 
 ## JBoss EAP 8.1 で動かす（参考）
 
@@ -214,10 +215,7 @@ URL・ユーザーは `bootstrap.properties` と同じ値にする。
 
 ### 4. JNDI をアプリに合わせる
 
-`persistence.xml` の `<jta-data-source>` はいま `jdbc/oracle`（Liberty 用）である。EAP では次のどちらかにする。
-
-- `persistence.xml` を `java:jboss/datasources/OracleDS` に変える（EAP で動かすときだけ）。
-- または `src/main/webapp/WEB-INF/jboss-web.xml` で結線する。
+MyBatis は JNDI 名 `jdbc/oracle` を参照する。EAP では `src/main/webapp/WEB-INF/jboss-web.xml` で `java:jboss/datasources/OracleDS` に結線する。
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -234,7 +232,7 @@ URL・ユーザーは `bootstrap.properties` と同じ値にする。
 
 ### 5. テーブルを用意する
 
-EAP の JPA 実装は **Hibernate** である。`persistence.xml` の `eclipselink.ddl-generation` は効かないので、`src/main/sql/items.sql` を SQL\*Plus などから実行する。
+MyBatis はテーブルを作らない。`src/main/sql/items.sql` を SQL\*Plus などから実行する。
 
 ### 6. デプロイする
 
@@ -252,10 +250,10 @@ deploy /path/to/jakartaee-hello-world/target/jakartaee-hello-world.war
 
 ### 動かないとき
 
-- DataSource の JNDI と `persistence.xml` が一致しているか
+- DataSource の JNDI が `jdbc/oracle` に解決されるか（`jboss-web.xml`）
 - `ojdbc11` モジュールがサーバー起動後も残っているか（`module add` はインストール先の `modules/` にファイルを作る）
 - 管理コンソールのランタイムでデプロイが `OK` か
-- ログに Hibernate の `NameNotFoundException`（DataSource）や ORA-00942（テーブル未作成）が出ていないか
+- ログに `NameNotFoundException`（DataSource）や ORA-00942（テーブル未作成）が出ていないか
 
 Liberty と EAP を同時に使う場合、ポートは Liberty が 9080、EAP が 8080 で分かれている。
 
@@ -265,8 +263,9 @@ Liberty と EAP を同時に使う場合、ポートは Liberty が 9080、EAP �
 | --- | --- |
 | `src/main/liberty/config/bootstrap.properties` | Oracle の URL / ユーザー / パスワード |
 | `src/main/liberty/config/server.xml` | Open Liberty、DataSource `jdbc/oracle` |
-| `src/main/resources/META-INF/persistence.xml` | JPA（`oraclePU`） |
-| `pom.xml` | `ojdbc11` のバージョン。起動時に `jdbc/ojdbc11.jar` へコピー |
+| `ItemMapper.java` | MyBatis の CRUD SQL |
+| `SqlSessionFactoryProducer.java` | JNDI DataSource から `SqlSessionFactory` を作る |
+| `pom.xml` | `ojdbc11` と MyBatis のバージョン |
 | `src/main/webapp/WEB-INF/web.xml` | `/rest/*` を Jakarta REST に割り当て |
 
 ## Docker
