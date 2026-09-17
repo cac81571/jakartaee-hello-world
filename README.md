@@ -178,6 +178,87 @@ DELETE FROM ITEMS WHERE ID = ?1
 
 プレースホルダは JPA の `?1`, `?2` …。テーブルや列を変えたらこの SQL と `Item.java`、`setParameter` の番号を揃える。
 
+## JBoss EAP 8.1 で動かす（参考）
+
+アプリの Java コードは Jakarta EE 10 なので **EAP 8.1 + Java 21** で動かせる。ただし今の `liberty:run` と `server.xml` は Open Liberty 専用なので、EAP 側で DataSource とデプロイを用意する。EAP の HTTP は既定 **8080** である。
+
+### 1. WAR を作る
+
+```powershell
+.\mvnw.cmd package
+```
+
+成果物は `target/jakartaee-hello-world.war`。
+
+### 2. Oracle JDBC をモジュールにする
+
+EAP の `jboss-cli.bat` を使う例（`ojdbc11.jar` のパスは環境に合わせる）。
+
+```
+module add --name=com.oracle.ojdbc --resources=C:\path\to\ojdbc11.jar --dependencies=jakarta.api,jakarta.transaction.api
+```
+
+続けてドライバを登録する。
+
+```
+/subsystem=datasources/jdbc-driver=oracle:add(driver-name=oracle,driver-module-name=com.oracle.ojdbc,driver-class-name=oracle.jdbc.OracleDriver,driver-datasource-class-name=oracle.jdbc.datasource.OracleDataSource)
+```
+
+### 3. DataSource を作る
+
+```
+data-source add --name=OracleDS --jndi-name=java:jboss/datasources/OracleDS --driver-name=oracle --connection-url=jdbc:oracle:thin:@//localhost:1521/FREEPDB1 --user-name=app --password=app --jta=true --use-ccm=true --valid-connection-checker-class-name=org.jboss.jca.adapters.jdbc.extensions.oracle.OracleValidConnectionChecker --exception-sorter-class-name=org.jboss.jca.adapters.jdbc.extensions.oracle.OracleExceptionSorter
+```
+
+URL・ユーザーは `bootstrap.properties` と同じ値にする。
+
+### 4. JNDI をアプリに合わせる
+
+`persistence.xml` の `<jta-data-source>` はいま `jdbc/oracle`（Liberty 用）である。EAP では次のどちらかにする。
+
+- `persistence.xml` を `java:jboss/datasources/OracleDS` に変える（EAP で動かすときだけ）。
+- または `src/main/webapp/WEB-INF/jboss-web.xml` で結線する。
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<jboss-web>
+    <context-root>/</context-root>
+    <resource-ref>
+        <res-ref-name>jdbc/oracle</res-ref-name>
+        <jndi-name>java:jboss/datasources/OracleDS</jndi-name>
+    </resource-ref>
+</jboss-web>
+```
+
+`context-root` を付けない場合、URL は `http://localhost:8080/jakartaee-hello-world/` になる。
+
+### 5. テーブルを用意する
+
+EAP の JPA 実装は **Hibernate** である。`persistence.xml` の `eclipselink.ddl-generation` は効かないので、`src/main/sql/items.sql` を SQL\*Plus などから実行する。
+
+### 6. デプロイする
+
+```
+deploy /path/to/jakartaee-hello-world/target/jakartaee-hello-world.war
+```
+
+または WAR を `EAP_HOME/standalone/deployments/` にコピーする。
+
+確認:
+
+- 画面: http://localhost:8080/ （`jboss-web.xml` で `/` にした場合）
+- Hello: http://localhost:8080/rest/hello
+- アイテム: http://localhost:8080/rest/items
+
+### 動かないとき
+
+- DataSource の JNDI と `persistence.xml` が一致しているか
+- `ojdbc11` モジュールがサーバー起動後も残っているか（`module add` はインストール先の `modules/` にファイルを作る）
+- 管理コンソールのランタイムでデプロイが `OK` か
+- ログに Hibernate の `NameNotFoundException`（DataSource）や ORA-00942（テーブル未作成）が出ていないか
+
+Liberty と EAP を同時に使う場合、ポートは Liberty が 9080、EAP が 8080 で分かれている。
+
 ## 主な設定ファイル
 
 | ファイル | 役割 |
